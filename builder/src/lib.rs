@@ -47,6 +47,32 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 self.current_dir = Some(current_dir);
                 self
             }
+
+            pub fn build(&self) -> Result<Command, Box<dyn Error>> {
+                Ok(Command {
+                    executable: self.executable.clone().ok_or("executable is required")?,
+                    args: self.args.clone().ok_or("args is required")?,
+                    env: self.env.clone().ok_or("env is required")?,
+                    current_dir: self.current_dir.clone().ok_or("current_dir is required")?,
+                })
+            }
+        }
+
+        trait Error: Send + Sync + std::fmt::Debug + 'static {}
+
+        impl Error for &'static str {}
+        impl Error for String {}
+
+        impl From<&'static str> for Box<dyn Error> {
+            fn from(err: &'static str) -> Box<dyn Error> {
+                Box::new(err)
+            }
+        }
+
+        impl From<String> for Box<dyn Error> {
+            fn from(err: String) -> Box<dyn Error> {
+                Box::new(err)
+            }
         }
     }.into()
 }
