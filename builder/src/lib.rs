@@ -7,7 +7,47 @@ use syn::{
 
 #[proc_macro_derive(Builder)]
 pub fn derive(input: TokenStream) -> TokenStream {
-    let _ = parse_macro_input!(input as DeriveInput);
+    let input = parse_macro_input!(input as DeriveInput);
+    let fields =
+        match &input.data {
+            syn::Data::Struct(data) =>
+                match &data.fields {
+                    syn::Fields::Named(fields) =>
+                        fields.named.iter().map(|field|
+                            match (&field.ident, &field.ty) {
+                                (
+                                    Some(field_ident),
+                                    syn::Type::Path(
+                                        syn::TypePath {
+                                            qself: None,
+                                            path: syn::Path {
+                                                segments,
+                                                ..
+                                            },
+                                        },
+                                    ),
+                                ) =>
+                                    match segments.first() {
+                                        Some(syn::PathSegment {
+                                            ident,
+                                            ..
+                                        }) if segments.len() == 1 =>
+                                            if ident == "Option" {
+                                                (field_ident.clone(), true)
+                                            } else {
+                                                (field_ident.clone(), false)
+                                            },
+                                        _ => unimplemented!()
+                                    },
+                                _ => unimplemented!(),
+                            }
+                        ).collect::<Vec<_>>(),
+                    _ => unimplemented!(),
+                }
+            _ => unimplemented!(),
+        };
+    let option_fields = fields.iter().filter(|(_, is_option)| *is_option).map(|(field, _)| field);
+    let non_option_fields = fields.iter().filter(|(_, is_option)| !*is_option).map(|(field, _)| field);
     quote! {
         pub struct CommandBuilder {
             executable: Option<String>,
@@ -50,10 +90,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
             pub fn build(&self) -> Result<Command, Box<dyn Error>> {
                 Ok(Command {
-                    executable: self.executable.clone().ok_or("executable is required")?,
-                    args: self.args.clone().ok_or("args is required")?,
-                    env: self.env.clone().ok_or("env is required")?,
-                    current_dir: self.current_dir.clone().ok_or("current_dir is required")?,
+                    #(
+                        #option_fields: self.#option_fields.clone(),
+                    )*
+                    #(
+                        #non_option_fields: self.#non_option_fields.clone().ok_or(format!("{} is required", stringify!(#non_option_fields)))?,
+                    )*
                 })
             }
         }
